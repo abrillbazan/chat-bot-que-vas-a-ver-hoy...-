@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tu película ideal</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #181b24; --texto: #e8eaf0; --suave: #9aa3b5;
+    --acento: #f5b83d; --user: #2b6cf0; --bot: #232734; --borde: #2c3140;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--texto); }
+
+  /* Contenido de ejemplo de la página (reemplazalo por el tuyo) */
+  .hero { max-width: 720px; margin: 0 auto; padding: 96px 24px; text-align: center; }
+  .hero h1 { font-size: clamp(2rem, 6vw, 3rem); margin: 0 0 12px; }
+  .hero p { color: var(--suave); font-size: 1.1rem; margin: 0; }
+
+  /* ===== WIDGET DE CHAT: copiá desde acá (CSS) ===== */
+  #chat-btn {
+    position: fixed; right: 20px; bottom: 20px; width: 56px; height: 56px; border-radius: 50%;
+    border: 0; background: var(--acento); color: #1a1a1a; font-size: 26px; cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0,0,0,.4); z-index: 1000;
+  }
+  #chat-panel {
+    position: fixed; right: 20px; bottom: 88px; z-index: 1000;
+    width: min(380px, calc(100vw - 24px)); height: min(560px, calc(100vh - 110px));
+    display: none; flex-direction: column; background: var(--panel);
+    border: 1px solid var(--borde); border-radius: 16px; overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  }
+  #chat-panel.abierto { display: flex; }
+  #chat-head { padding: 14px 16px; font-weight: 600; border-bottom: 1px solid var(--borde); }
+  #chat-head small { display: block; font-weight: 400; color: var(--suave); margin-top: 2px; }
+  #msgs { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 85%; padding: 10px 13px; border-radius: 14px; line-height: 1.45; font-size: .95rem; word-wrap: break-word; }
+  .msg.bot { background: var(--bot); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.user { background: var(--user); align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.pensando { color: var(--suave); font-style: italic; }
+  .cards { display: flex; flex-direction: column; gap: 8px; align-self: stretch; }
+  .card { display: flex; gap: 10px; background: var(--bot); border: 1px solid var(--borde); border-radius: 12px; padding: 8px; color: inherit; text-decoration: none; }
+  .card img { width: 56px; height: 84px; object-fit: cover; border-radius: 6px; background: #111; flex-shrink: 0; }
+  .card b { display: block; margin-bottom: 2px; }
+  .card span { color: var(--suave); font-size: .85rem; }
+  #chat-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--borde); }
+  #chat-input { flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--borde); background: var(--bg); color: var(--texto); font-size: .95rem; }
+  #chat-form button { padding: 0 16px; border: 0; border-radius: 10px; background: var(--acento); color: #1a1a1a; font-weight: 600; cursor: pointer; }
+  #chat-form button:disabled { opacity: .5; cursor: default; }
+  .aviso { text-align: center; color: var(--suave); font-size: .72rem; padding: 0 10px 8px; }
+  /* ===== fin del CSS del widget ===== */
+</style>
+</head>
+<body>
+
+<main class="hero">
+  <h1>Tu película ideal 🎬</h1>
+  <p>Contanos qué tenés ganas de ver y te recomendamos una. Probá el chat de abajo a la derecha.</p>
+</main>
+
+<!-- ===== WIDGET DE CHAT: copiá desde acá (HTML) ===== -->
+<button id="chat-btn" aria-label="Abrir chat">💬</button>
+<section id="chat-panel" aria-label="Chat de recomendaciones">
+  <div id="chat-head">Asistente de películas<small>Soy una IA y puedo equivocarme</small></div>
+  <div id="msgs"></div>
+  <form id="chat-form">
+    <input id="chat-input" type="text" placeholder="Escribí lo que tenés ganas de ver…" maxlength="500" autocomplete="off">
+    <button type="submit">Enviar</button>
+  </form>
+  <div class="aviso">Las recomendaciones salen de la base de datos TMDB.</div>
+</section>
+
+<script>
+  // Si el backend está en otro dominio, poné acá su URL completa (ej: 'https://api.tusitio.com/api/chat').
+  const API_URL = '/api/chat';
+
+  const btn = document.getElementById('chat-btn');
+  const panel = document.getElementById('chat-panel');
+  const msgs = document.getElementById('msgs');
+  const form = document.getElementById('chat-form');
+  const input = document.getElementById('chat-input');
+  const enviarBtn = form.querySelector('button');
+  const historial = [];
+  let saludado = false;
+
+  function esc(t) {
+    return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function agregar(rol, texto, extraClase) {
+    const el = document.createElement('div');
+    el.className = 'msg ' + rol + (extraClase ? ' ' + extraClase : '');
+    el.innerHTML = esc(texto).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+    msgs.appendChild(el);
+    msgs.scrollTop = msgs.scrollHeight;
+    return el;
+  }
+
+  function mostrarTarjetas(peliculas, respuesta) {
+    const texto = respuesta.toLowerCase();
+    const vistas = new Set();
+    const elegidas = (peliculas || []).filter((m) => {
+      if (vistas.has(m.id) || !texto.includes(m.titulo.toLowerCase())) return false;
+      vistas.add(m.id);
+      return true;
+    });
+    if (!elegidas.length) return;
+    const cont = document.createElement('div');
+    cont.className = 'cards';
+    elegidas.forEach((m) => {
+      const a = document.createElement('a');
+      a.className = 'card';
+      a.href = m.url; a.target = '_blank'; a.rel = 'noopener';
+      if (m.poster) {
+        const img = document.createElement('img');
+        img.src = m.poster; img.alt = '';
+        a.appendChild(img);
+      }
+      const info = document.createElement('div');
+      const t = document.createElement('b'); t.textContent = m.titulo;
+      const s = document.createElement('span'); s.textContent = m.anio + ' · ★ ' + m.nota;
+      info.append(t, s);
+      a.appendChild(info);
+      cont.appendChild(a);
+    });
+    msgs.appendChild(cont);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  btn.addEventListener('click', () => {
+    panel.classList.toggle('abierto');
+    if (panel.classList.contains('abierto')) {
+      if (!saludado) {
+        agregar('bot', '¡Hola! Contame qué tenés ganas de ver: género, ánimo, duración… y te recomiendo una película. 🍿');
+        saludado = true;
+      }
+      input.focus();
+    }
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const texto = input.value.trim();
+    if (!texto) return;
+    input.value = '';
+    agregar('user', texto);
+    historial.push({ role: 'user', content: texto });
+    enviarBtn.disabled = true;
+    const pensando = agregar('bot', 'Buscando…', 'pensando');
+    try {
+      const r = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: historial }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Error');
+      pensando.remove();
+      historial.push({ role: 'assistant', content: data.reply });
+      agregar('bot', data.reply);
+      mostrarTarjetas(data.movies, data.reply);
+    } catch (err) {
+      pensando.textContent = 'Ups, algo falló. Probá de nuevo en un momento.';
+      historial.pop();
+    } finally {
+      enviarBtn.disabled = false;
+      input.focus();
+    }
+  });
+</script>
+<!-- ===== fin del widget de chat ===== -->
+
+</body>
+</html>

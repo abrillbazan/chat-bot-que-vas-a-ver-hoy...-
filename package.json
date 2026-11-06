@@ -1,0 +1,14 @@
+{
+  "name": "chatbot-peliculas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chatbot que recomienda películas y atiende consultas básicas, con Claude y TMDB.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --env-file=.env server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
